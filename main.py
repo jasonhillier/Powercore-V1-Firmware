@@ -52,9 +52,13 @@ Scope of Powercore EDM Power Supply Unit Firmware [23.07.14]:
 
 # Imported Modules 
 # ----------------
-from machine import Pin , ADC, PWM
+from machine import Pin , ADC, PWM, Timer
 import math
 from utime import sleep
+import _thread
+import sys
+
+power_accum = 0
 
 """
 The minimum period of the EDM system is the sum of the periods. The maximum frequency of the EDM system is the inverse of the minimum period.
@@ -274,6 +278,35 @@ def enable_high_power_pwm():
     #Turn on status LED 
     high_voltage_MOSFET_status_LED.on()
 
+def read_current(t):
+    """
+    Function to track current use (how many sparks we're making). Runs at 10ms sample rate. (100hz)
+    TODO: short detection
+    """
+    global power_accum
+
+    voltage = ACS712_analog_current_sensor.read_u16() * (3.3 / 65535)
+    if voltage < 1:
+        #invert the value (lower is higher current) and accumulate
+        power_accum += int((1-voltage)*100)
+
+def print_current_delta():
+    """
+    Function to print the total power registered in samples since the last time
+    """
+    global power_accum
+
+    print("<Current delta>:" + str(power_accum))
+    power_accum = 0
+
+def start_current_monitoring_thread():
+    """
+    Function to start current monitoring thread
+    TODO: research whether pico's timer or starting a thread would be better
+    """
+    tim = Timer()
+    tim.init(mode=Timer.PERIODIC, freq=100, callback=read_current)
+
 # Main code
 # --------
 # Initialize Powercore EDM power supply
@@ -281,10 +314,12 @@ print("Starting up...")
 set_default_pin_states()
 calculate_PWM_parameters()
 enable_high_power_pwm()
+start_current_monitoring_thread()
 print("initialized")
 
 while True:
     user_LED.toggle()
     thermal_runaway_protection_check(thermister_1_analog_input, maximum_allowable_temperature_of_power_resistor, minimum_allowable_temperature_of_power_resistor)
     thermal_runaway_protection_check(thermister_2_analog_input, maximum_allowable_temperature_of_power_MOSFET, minimum_allowable_temperature_of_power_MOSFET)
+    print_current_delta()
     sleep(1)
