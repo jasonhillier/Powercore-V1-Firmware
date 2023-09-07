@@ -58,7 +58,14 @@ from utime import sleep
 import _thread
 import sys
 
+"""
+Current measurement reporting
+"""
 power_accum = 0
+power_scount = 0
+
+CURRENT_SAMPLE_HZ = 1000
+CURRENT_VTHRESHOLD = 1.2
 
 """
 The minimum period of the EDM system is the sum of the periods. The maximum frequency of the EDM system is the inverse of the minimum period.
@@ -284,28 +291,34 @@ def read_current(t):
     TODO: short detection
     """
     global power_accum
+    global power_scount
 
     voltage = ACS712_analog_current_sensor.read_u16() * (3.3 / 65535)
-    if voltage < 1:
+    if voltage <= CURRENT_VTHRESHOLD:
         #invert the value (lower is higher current) and accumulate
-        power_accum += int((1-voltage)*100)
+        power_accum += int((CURRENT_VTHRESHOLD-voltage)*100)
+    
+    power_scount += 1
 
-def print_current_delta():
+def print_current_avg():
     """
-    Function to print the total power registered in samples since the last time
+    Function to print the average power registered in samples since the last time
+    TODO: it may make more sense to use a polynomial expression against the sample value set as wear is likely to increase superlinearly as the power increases (until short)
     """
     global power_accum
+    global power_scount
 
-    print("<Current delta>:" + str(power_accum))
+    print("<Current avg>:" + str(round(power_accum/power_scount,4)))
     power_accum = 0
+    power_scount = 0
 
 def start_current_monitoring_thread():
     """
     Function to start current monitoring thread
-    TODO: research whether pico's timer or starting a thread would be better
+    TODO: research whether pico's timer or starting a thread would be better (or use DMA)
     """
     tim = Timer()
-    tim.init(mode=Timer.PERIODIC, freq=100, callback=read_current)
+    tim.init(mode=Timer.PERIODIC, freq=CURRENT_SAMPLE_HZ, callback=read_current)
 
 # Main code
 # --------
@@ -321,5 +334,5 @@ while True:
     user_LED.toggle()
     thermal_runaway_protection_check(thermister_1_analog_input, maximum_allowable_temperature_of_power_resistor, minimum_allowable_temperature_of_power_resistor)
     thermal_runaway_protection_check(thermister_2_analog_input, maximum_allowable_temperature_of_power_MOSFET, minimum_allowable_temperature_of_power_MOSFET)
-    print_current_delta()
+    print_current_avg()
     sleep(1)
