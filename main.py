@@ -288,13 +288,13 @@ def enable_high_power_pwm():
 def read_current(t):
     """
     Function to track current use (how many sparks we're making). Runs at 10ms sample rate. (100hz)
-    TODO: short detection
+    TODO: better short detection
     """
     global power_accum
     global power_scount
 
     voltage = ACS712_analog_current_sensor.read_u16() * (3.3 / 65535)
-    if voltage <= CURRENT_VTHRESHOLD:
+    if voltage <= CURRENT_VTHRESHOLD and voltage > 0: #(ignore short since no wear occurs)
         #invert the value (lower is higher current) and accumulate
         power_accum += int((CURRENT_VTHRESHOLD-voltage)*100)
     
